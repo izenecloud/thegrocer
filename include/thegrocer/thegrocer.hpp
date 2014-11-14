@@ -149,7 +149,7 @@ public:
         return true;
     }
 
-    bool Query(const std::string& content, const std::string& title, std::vector<std::string>& result)
+    bool Query(const std::string& content, const std::string& title, std::vector<std::pair<std::string, std::string> >& result)
     {
         BH_LOG(logger_, SWARM_LOG_DEBUG, "start query");
         WidVec title_wid_vec;
@@ -350,7 +350,7 @@ public:
             }
             const std::string& keyword = word_list_[select.second].text;
             BH_LOG(logger_, SWARM_LOG_DEBUG, "[P]%s,%f,%s", otitle.c_str(), score, keyword.c_str());
-            result.push_back(product.docid);
+            result.push_back(std::make_pair(product.docid, keyword));
             if(result.size()==n_) break;
             //output pid
         }

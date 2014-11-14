@@ -3,6 +3,9 @@
 #include <thevoid/swarm/logger.hpp>
 #include <thevoid/server.hpp>
 #include <thevoid/stream.hpp>
+#include <thevoid/rapidjson/rapidjson.h>
+#include <thevoid/rapidjson/stringbuffer.h>
+#include <thevoid/rapidjson/writer.h>
 
 namespace po = boost::program_options;
 using namespace izenecloud;
@@ -71,26 +74,32 @@ public:
 		virtual void on_request(const thevoid::http_request &req, const boost::asio::const_buffer &buffer) {
 			(void) buffer;
 
-			std::string data;
             std::string title;
             std::string content;
-			if (auto datap = req.url().query().item_value("data"))
-				data = *datap;
 			if (auto datap = req.url().query().item_value("title"))
 				title= *datap;
 			if (auto datap = req.url().query().item_value("content"))
 				content = *datap;
 
-			int timeout_ms = 10 + (rand() % 10);
-			usleep(timeout_ms * 1000);
-
+            std::vector<std::pair<std::string, std::string> > results;
+			ptg->Query(content, title, results);
+            rapidjson::StringBuffer s;
+            rapidjson::Writer<rapidjson::StringBuffer> writer(s);
+            writer.StartArray();
+            for(uint32_t i=0;i<results.size();i++)
+            {
+                writer.StartArray();
+                writer.String(results[i].first.c_str());
+                writer.String(results[i].second.c_str());
+                writer.EndArray();
+            }
+            writer.EndArray();
+            std::string res = s.GetString();
 			thevoid::http_response reply;
 			reply.set_code(thevoid::http_response::ok);
-			reply.headers().set_content_length(data.size());
-            std::vector<std::string> results;
-			ptg->Query(content, title, results);
+			reply.headers().set_content_length(res.size());
 
-			this->send_reply(std::move(reply), std::move(data));
+			this->send_reply(std::move(reply), std::move(res));
 		}
 	};
 
@@ -116,8 +125,8 @@ public:
 			thevoid::http_response reply;
 			reply.set_code(thevoid::http_response::ok);
 			reply.headers().set_content_length(data.size());
-            std::vector<std::string> results;
-			ptg->Query(content, title, results);
+            //std::vector<std::string> results;
+			//ptg->Query(content, title, results);
 
 			this->send_reply(std::move(reply), std::move(data));
 		}
