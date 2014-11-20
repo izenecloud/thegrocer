@@ -151,6 +151,11 @@ public:
 int main(int ac, char** av)
 {
     setlocale( LC_ALL, "" );
+    //std::string str = "孤岛惊魂";
+    //std::size_t csize = str.length();
+    //std::size_t wsize = mbstowcs(NULL, str.c_str(), csize);
+    //std::cerr<<"wsize "<<wsize<<std::endl;
+    //return EXIT_SUCCESS;
     po::options_description desc("Allowed options");
     desc.add_options()
         ("help", "produce help message")

@@ -6,7 +6,7 @@
 #include <boost/foreach.hpp>
 
 namespace thegrocer {
-  typedef double Coord;            // a coordinate
+  typedef float Coord;            // a coordinate
   typedef double Distance;         // distance
   typedef uint32_t Dimensions; // how many dimensions
   typedef uint32_t PointId;    // the id of this point

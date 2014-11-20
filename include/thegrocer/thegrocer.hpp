@@ -5,6 +5,8 @@
 #include <fstream>
 #include <boost/algorithm/string.hpp>
 #include <boost/unordered_set.hpp>
+#include <boost/random/mersenne_twister.hpp>
+#include <boost/random/uniform_int.hpp>
 #include <icma/icma.h>
 //#include <opencv2/core/core.hpp>
 //#include <opencv2/ml/ml.hpp>
@@ -20,7 +22,7 @@ class TheGrocer {
     typedef uint32_t wid_t;//word id
     typedef uint32_t pid_t;
     typedef std::vector<pid_t> posting_t;
-    typedef std::vector<double> vec_t;
+    typedef std::vector<float> vec_t;
     typedef boost::unordered_map<std::string, wid_t> TextMap;
     typedef boost::unordered_set<wid_t> WidSet;
     typedef boost::unordered_set<pid_t> PidSet;
@@ -69,6 +71,27 @@ public:
         // set knowledge
         analyzer_->setKnowledge(knowledge_);
         analyzer_->setOption( cma::Analyzer::OPTION_ANALYSIS_TYPE, 1);
+        uint32_t L = 32;
+        R_.resize(L);                                                                                                                        
+        boost::mt19937 gen;                                                                                                                               
+        uint32_t dk = dimension_/L;//approximate d/k which is dimension_/L;
+        float iv = std::sqrt((float)dk);
+        for(uint32_t i=0;i<R_.size();i++)                                                                                                           
+        {                                                                                                                                                 
+            std::vector<std::pair<uint16_t, float> >& vec = R_[i];                                                                                 
+            for(uint16_t j=0;j<dimension_;j++)                                                                                                     
+            {                                                                                                                                             
+                boost::uniform_int<uint32_t> dist(1, dk*2);                                                                                         
+                uint32_t value = dist(gen);                                                                                                               
+                float v = 0.0;                                                                                                                             
+                if(value==1) v=iv;                                                                                                                         
+                else if(value==2) v = -1.0*iv;                                                                                                                 
+                if(v!=0.0)                                                                                                                                  
+                {                                                                                                                                         
+                    vec.push_back(std::make_pair(j, v));                                                                                                  
+                }                                                                                                                                         
+            }                                                                                                                                             
+        }   
         std::string model_file = resource+"/model";
         std::string products_file = resource+"/products";
         {
@@ -85,14 +108,14 @@ public:
                 boost::algorithm::trim(line);
                 std::vector<std::string> vec;
                 boost::algorithm::split(vec, line, boost::algorithm::is_any_of(" "));
-                if(vec.size()<2) continue;
-                if(vec.size()!=dimension_+1){
+                uint32_t evsize = dimension_+1;
+                if(vec.size()<evsize){
                     std::cerr<<"error line:"<<line<<std::endl;
                     continue;
                 }
                 Word word;
                 word.text = vec.front();
-                for(uint32_t i=1;i<vec.size();i++)
+                for(uint32_t i=1;i<evsize;i++)
                 {
                     word.vec.push_back(atof(vec[i].c_str()));
                 }
@@ -105,7 +128,7 @@ public:
             std::cerr<<"dimension "<<dimension_<<std::endl;
         }
         {
-            std::size_t nrow = 1000000;
+            std::size_t nrow = 100000000;
             //cv::Mat train(nrow, dimension_, CV_32FC1);
             //cv::Mat classes(nrow, 1, CV_32FC1);
             std::ifstream ifs(products_file.c_str());
@@ -117,9 +140,16 @@ public:
                 pid_t pid = product_list_.size();
                 Product product;
                 product.docid = line.substr(0, 32);
-                product.title = line.substr(32);
-                GetWords_(product.title, product.wid_vec);
+                const std::string& title = line.substr(32);
+                product.title = title;
+                GetWords_(title, product.wid_vec, true, false);
                 BagVector_(product.wid_vec, product.vec);
+                //std::cerr<<"[P]"<<product.vec.size();
+                //for(uint32_t i=0;i<product.vec.size();i++)
+                //{
+                //    std::cerr<<","<<product.vec[i];
+                //}
+                //std::cerr<<std::endl;
                 //vec_t pvec;
                 //BagVector_(product.wid_vec, pvec);
                 //uint32_t p = pid;
@@ -135,7 +165,7 @@ public:
                 product_list_.push_back(product);
                 if(pid%100000==0)
                 {
-                    std::cerr<<"loading product "<<pid<<std::endl;
+                    std::cerr<<"loading product B "<<pid<<std::endl;
                 }
                 if(product_list_.size()==nrow) break;
             }
@@ -224,10 +254,11 @@ public:
             if(!title_vec.empty()&&query_wid_vec.size()>K)//has title parameter
             {
                 sim = cosine_(title_vec, kvec);
-                //for(wid_t wid : wv) {
-                //    std::cerr<<word_list_[wid].text<<",";
-                //}
-                //std::cerr<<"\tk sim "<<sim<<std::endl;
+                double edist = distance_(title_vec, kvec);
+                for(wid_t wid : wv) {
+                    std::cerr<<word_list_[wid].text<<",";
+                }
+                std::cerr<<"\tk sim "<<sim<<", edist:"<<edist<<std::endl;
                 if(sim<0.33) continue;
                 dist = 1.0-sim;
             }
@@ -341,7 +372,9 @@ public:
             }
             std::pair<double, wid_t> select(-1.0, 0);
             for(wid_t wid : candidate_wid_list) {
-                double dist = distance_(word_list_[wid].vec, product.vec);
+                vec_t rvec;
+                RP_(word_list_[wid].vec, rvec);
+                double dist = distance_(rvec, product.vec);
                 if(select.first<0.0 || dist<select.first)
                 {
                     select.first = dist;
@@ -439,6 +472,30 @@ private:
         return total;
     }
 
+    //uint32_t hash_(uint32_t key, uint32_t seed)                            
+    //{                                                                      
+    //    return izenelib::util::MurmurHash2(&key, sizeof(key), seed);       
+    //} 
+
+    void RP_(const vec_t& ovec, vec_t& vec)
+    {
+        vec.resize(R_.size(), 0.0);
+        for(uint32_t i=0;i<vec.size();i++)
+        {
+            std::vector<std::pair<uint16_t, float> >& rv = R_[i];                                                                                 
+            for(uint32_t j=0;j<rv.size();j++)
+            {
+                vec[i] += ovec[rv[j].first]*rv[j].second;
+            }
+        }
+    }
+    void RP_(vec_t& vec)
+    {
+        vec_t tmp;
+        RP_(vec, tmp);
+        std::swap(vec, tmp);
+    }
+
     void BagVector_(const WidVec& wid_vec, vec_t& vec)
     {
         if(wid_vec.empty()) return;
@@ -451,6 +508,11 @@ private:
                 vec[i]+=v[i];
             }
         }
+        for(uint32_t i=0;i<vec.size();i++)
+        {
+            vec[i] /= wid_vec.size();
+        }
+        RP_(vec);
     }
 
 
@@ -466,6 +528,7 @@ private:
     std::vector<Product> product_list_;
     //cv::KNearest* knn_;
     uint32_t nnk_;
+    std::vector<std::vector<std::pair<uint16_t, float> > > R_;
 };
 
 }
